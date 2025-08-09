@@ -1,78 +1,236 @@
-// deck.gl
-// SPDX-License-Identifier: MIT
-// Copyright (c) vis.gl contributors
-
 import { useEffect, useState } from "react";
+import {
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogContentText,
+  DialogActions,
+  Button,
+  Typography,
+} from "@mui/material";
 import { createRoot } from "react-dom/client";
-import { Map } from "@vis.gl/react-maplibre";
-import "maplibre-gl/dist/maplibre-gl.css";
-import { DeckGL } from "@deck.gl/react";
+import Map from "react-map-gl/mapbox";
 
+import { DeckGL } from "@deck.gl/react";
 import { ScatterplotLayer } from "@deck.gl/layers";
 import { CSVLoader } from "@loaders.gl/csv";
 import { load } from "@loaders.gl/core";
+import type { MapViewState } from "@deck.gl/core";
+import Checkbox from "@mui/material/Checkbox";
+import FormGroup from "@mui/material/FormGroup";
+import FormControlLabel from "@mui/material/FormControlLabel";
+import "mapbox-gl/dist/mapbox-gl.css";
+const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN;
+const MAP_STYLE = "mapbox://styles/jdangoh/cmdzkidno009i01ryatoc33ex";
 
-import type { Color, MapViewState } from "@deck.gl/core";
-
-const MALE_COLOR: Color = [0, 128, 255];
-const FEMALE_COLOR: Color = [255, 0, 128];
+const dict_color = {
+  AGRÍCOLA: [163, 229, 104],
+  "PÚBLICO URBANO": [177, 180, 181],
+  "DIFERENTES USOS": [242, 203, 88],
+  PECUARIO: [255, 106, 77],
+  SERVICIOS: [247, 135, 204],
+  DOMÉSTICO: [126, 186, 217],
+  INDUSTRIAL: [188, 149, 88],
+  ACUACULTURA: [110, 120, 255],
+  OTROS: [247, 247, 247],
+  "GENERACIÓN DE ENERGÍA": [247, 247, 247],
+  "CONSERVACIÓN ECOLÓGICA": [247, 247, 247],
+  AGROINDUSTIAL: [247, 247, 247],
+  COMERCIO: [247, 247, 247],
+};
+type AnexosPunto = {
+  USO: keyof typeof dict_color;
+  LON: number;
+  LAT: number;
+  VOL: number;
+};
 
 // Source data CSV
-const DATA_URL =
-  "https://tirandocodigo.mx/proyectos/ccvis/data/total_anexos_geo.csv"; // eslint-disable-line
+const url_anexos_sub =
+  "https://tirandocodigo.mx/quien-tiene-el-agua/datos/anexos_sub.csv"; // eslint-disable-line
+const url_anexos_sup =
+  "https://tirandocodigo.mx/quien-tiene-el-agua/datos/anexos_sup.csv"; // eslint-disable-line
+const url_anexos_des =
+  "https://tirandocodigo.mx/quien-tiene-el-agua/datos/anexos_des.csv"; // eslint-disable-line
+const url_anexos_fed =
+  "https://tirandocodigo.mx/quien-tiene-el-agua/datos/anexos_fed.csv"; // eslint-disable-line
 
 const INITIAL_VIEW_STATE: MapViewState = {
-  longitude: -74,
-  latitude: 40.7,
+  longitude: -100,
+  latitude: 20.7,
   zoom: 11,
   maxZoom: 16,
   pitch: 0,
   bearing: 0,
 };
 
-type DataPoint = [longitude: number, latitude: number, gender: number];
+export default function App() {
+  // modal
+  localStorage.removeItem("agua_modal_shown");
+  const [open, setOpen] = useState(false);
 
-export default function App({
-  mapStyle = "https://basemaps.cartocdn.com/gl/positron-nolabels-gl-style/style.json",
-}: {
-  radius?: number;
-  maleColor?: Color;
-  femaleColor?: Color;
-  mapStyle?: string;
-}) {
-  const [data, setData] = useState([]);
+  useEffect(() => {
+    const modalShown = localStorage.getItem("agua_modal_shown");
+    if (!modalShown) {
+      setOpen(true);
+    }
+  }, []);
+  const cerrarModal = () => {
+    setOpen(false);
+  };
+  const noVolverAMostrarModal = () => {
+    localStorage.setItem("agua_modal_shown", "true");
+    setOpen(false);
+  };
+
+  // mapa
+  const [dataSub, setDataSub] = useState([]);
+  const [dataSup, setDataSup] = useState([]);
+  const [dataDes, setDataDes] = useState([]);
+  const [dataFed, setDataFed] = useState([]);
+
+  const [showSub, setShowSub] = useState(true);
+  const [showSup, setShowSup] = useState(false);
+  const [showDes, setShowDes] = useState(false);
+  const [showFed, setShowFed] = useState(false);
   const isMac = navigator.platform.toUpperCase().indexOf("MAC") >= 0;
   const pixelRatio = window.devicePixelRatio || 1;
 
   useEffect(() => {
-    load(DATA_URL, CSVLoader, { csv: { header: true } }).then((result) => {
-      setData(result);
-    });
+    // @ts-expect-error: los datos deben venir bien
+    load(url_anexos_sub, CSVLoader, { csv: { header: true } }).then(setDataSub);
+    // @ts-expect-error: los datos deben venir bien
+    load(url_anexos_sup, CSVLoader, { csv: { header: true } }).then(setDataSup);
+    // @ts-expect-error: los datos deben venir bien
+    load(url_anexos_des, CSVLoader, { csv: { header: true } }).then(setDataDes);
+    // @ts-expect-error: los datos deben venir bien
+    load(url_anexos_fed, CSVLoader, { csv: { header: true } }).then(setDataFed);
   }, []);
-  const layers = [
-    new ScatterplotLayer<DataPoint>({
-      id: "scatter-plot",
+
+  function createLayer(id: string, data: any[]) {
+    return new ScatterplotLayer<AnexosPunto>({
+      id,
       data,
       radiusMinPixels: 1,
-      radiusMaxPixels: 30,
-      getFillColor: [255, 171, 100, 130],
-      getPosition: (d) => [Number(d.LON), Number(d.LAT)],
-      getRadius: (d) => Math.sqrt(Number(+d.VOLUMEN_ANUAL) || 1) / 1000,
-      radiusScale: isMac ? 10 * pixelRatio : 10, // Ajustar escala según el pixel ratio
+      radiusMaxPixels: 60,
+      getPosition: (d) => [d.LON, d.LAT, 0] as [number, number, number],
+      getFillColor: (d: AnexosPunto) => {
+        const base = dict_color[d.USO];
+        if (!base) {
+          console.warn(`Color no definido para uso: ${d.USO}`);
+          return [128, 128, 128, 80];
+        }
+        return [...base, 200] as [number, number, number, number];
+      },
+      getRadius: (d: AnexosPunto) => Math.sqrt(d.VOL || 1) / 50,
+      radiusScale: isMac ? 10 * pixelRatio : 10,
       filled: true,
       stroked: false,
       pickable: true,
-    }),
-  ];
-
+    });
+  }
+  const layers = [
+    showSub && createLayer("sub", dataSub),
+    showSup && createLayer("sup", dataSup),
+    showDes && createLayer("des", dataDes),
+    showFed && createLayer("fed", dataFed),
+  ].filter(Boolean); // Quita los false
   return (
-    <DeckGL
-      layers={layers}
-      initialViewState={INITIAL_VIEW_STATE}
-      controller={true}
-    >
-      <Map reuseMaps mapStyle={mapStyle} />
-    </DeckGL>
+    <>
+      <Dialog open={open} onClose={cerrarModal} maxWidth="sm" fullWidth>
+        <DialogTitle>
+          <Typography variant="h4" component="h1">
+            ¿Quién tiene el agua?
+          </Typography>
+        </DialogTitle>
+        <DialogContent>
+          <DialogContentText component="div">
+            <Typography gutterBottom>
+              Este mapa interactivo muestra las concesiones de agua otorgadas en
+              México. Puedes explorar los nombres de los titulares, ubicaciones,
+              volúmenes y otros datos públicos.
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Fuente: Registro Público de Derechos de Agua (REPDA), Conagua.
+            </Typography>
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={cerrarModal} variant="contained">
+            Explorar el mapa
+          </Button>
+          <Button onClick={noVolverAMostrarModal} variant="contained">
+            No mostrar intro de nuevo
+          </Button>
+        </DialogActions>
+      </Dialog>
+      <div className="panel-lateral">
+        <h3>Tipo de concesión</h3>
+        <FormGroup>
+          <FormControlLabel
+            control={
+              <Checkbox
+                checked={showSub}
+                onChange={(e) => setShowSub(e.target.checked)}
+              />
+            }
+            label="Subterráneos"
+          />
+          <FormControlLabel
+            control={
+              <Checkbox
+                checked={showSup}
+                onChange={(e) => setShowSup(e.target.checked)}
+              />
+            }
+            label="Superficiales"
+          />
+          <FormControlLabel
+            control={
+              <Checkbox
+                checked={showDes}
+                onChange={(e) => setShowDes(e.target.checked)}
+              />
+            }
+            label="Descargas"
+          />
+          <FormControlLabel
+            control={
+              <Checkbox
+                checked={showFed}
+                onChange={(e) => setShowFed(e.target.checked)}
+              />
+            }
+            label="Federales"
+          />
+        </FormGroup>
+        <h3>Uso de la concesión</h3>
+
+        <ul>
+          {Object.entries(dict_color).map(([key, item]) => (
+            <li key={key}>
+              {" "}
+              <span
+                className="nomenclatura"
+                style={{ background: `rgb(${item[0]},${item[1]},${item[2]})` }}
+              ></span>
+              {key}
+            </li>
+          ))}
+        </ul>
+      </div>
+      <DeckGL
+        layers={layers}
+        initialViewState={INITIAL_VIEW_STATE}
+        controller={true}
+        getTooltip={({ object }) =>
+          object &&
+          [object.TITULO, object.TITULAR, object.USO, object.VOL].join("\n")
+        }
+      >
+        <Map reuseMaps mapStyle={MAP_STYLE} mapboxAccessToken={MAPBOX_TOKEN} />
+      </DeckGL>
+    </>
   );
 }
 

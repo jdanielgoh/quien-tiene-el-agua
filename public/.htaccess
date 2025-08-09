@@ -1,0 +1,10 @@
+<IfModule mod_rewrite.c mod_headers.c>
+  RewriteEngine On
+  RewriteBase /quien-tiene-el-agua
+  RewriteRule ^/quien-tiene-el-agua/index\.html$ - [L]
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteCond %{REQUEST_FILENAME} !-d
+  RewriteRule . /quien-tiene-el-agua/index.html [L]
+  Header set Access-Control-Allow-Origin "*"
+
+</IfModule>
